@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>لوحة البائع - نظام الولاء</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <!-- إعدادات الأيقونة والتطبيق -->
+    <link rel="icon" type="image/png" href="logo-mybusiness_fikra-automation.png">
+    <link rel="apple-touch-icon" href="logo-mybusiness_fikra-automation.png">
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="لوحة البائع">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest-merchant.json">
+
+    <style>
+        :root { --ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
+        body { font-family: 'Tajawal', sans-serif; }
+
+        @keyframes rise-in {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .reveal {
+            opacity: 0;
+            animation: rise-in 450ms var(--ease-out) forwards;
+            animation-delay: calc(var(--i, 0) * 70ms);
+        }
+
+        .btn {
+            transition: transform 150ms var(--ease-out), background-color 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out;
+            will-change: transform;
+        }
+        .btn:hover  { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0) scale(0.97); }
+        .btn:focus-visible, .field:focus-visible {
+            outline: 2px solid #34d399;
+            outline-offset: 2px;
+        }
+        .field { transition: border-color 150ms ease-out, box-shadow 150ms ease-out; }
+        .field:focus { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+
+        .btn.is-loading { pointer-events: none; opacity: 0.85; }
+        .spinner {
+            display: none;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: #fff;
+            border-radius: 9999px;
+            animation: spin 700ms linear infinite;
+        }
+        .btn.is-loading .spinner { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* رسالة الحالة */
+        @keyframes msg-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .msg-in { animation: msg-in 250ms var(--ease-out); }
+
+        /* زر الهدية: نبض بالـ transform بدل animate-pulse */
+        @keyframes gift-pulse {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.025); }
+        }
+        .gift-pulse { animation: gift-pulse 1.6s ease-in-out infinite; }
+        #gift-action-container:not(.hidden) { animation: msg-in 350ms var(--ease-out); }
+
+        .shop-logo { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+
+        /* نافذة التعليمات */
+        #install-sheet-backdrop { opacity: 0; pointer-events: none; transition: opacity 200ms ease-out; }
+        #install-sheet-backdrop.is-open { opacity: 1; pointer-events: auto; }
+        #install-sheet {
+            transform: translateY(24px); opacity: 0;
+            transition: transform 350ms var(--ease-out), opacity 250ms ease-out;
+        }
+        #install-sheet-backdrop.is-open #install-sheet { transform: translateY(0); opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 1ms !important;
+                animation-delay: 0ms !important;
+                transition-duration: 1ms !important;
+            }
+            .reveal { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800 p-6 space-y-5">
+
+        <!-- تسجيل الدخول بالرمز السري -->
+        <div id="merchant-login-section" class="space-y-4">
+            <div class="text-center space-y-2 reveal" style="--i:0">
+                <div id="login-logo" class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-2xl mx-auto flex items-center justify-center font-bold text-xl border border-emerald-500/30 overflow-hidden">
+                    🔐
+                </div>
+                <h1 class="text-lg font-black text-emerald-400">تسجيل دخول البائع</h1>
+                <p class="text-xs text-slate-400">أدخل الرمز السري الخاص بالمحل للوصول إلى لوحة التحكم</p>
+            </div>
+
+            <form onsubmit="handleMerchantLogin(event)" class="space-y-3">
+                <div class="reveal" style="--i:1">
+                    <label for="login-shop-name" class="block text-xs text-slate-300 mb-1">اسم المحل أو المقهى</label>
+                    <input type="text" id="login-shop-name" required placeholder="مقهى النسخة الأفضل" class="field w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-emerald-500">
+                </div>
+                <div class="reveal" style="--i:2">
+                    <label for="login-secret-code" class="block text-xs text-slate-300 mb-1">الرمز السري للإدارة</label>
+                    <input type="password" id="login-secret-code" required autocomplete="current-password" placeholder="أدخل الرمز السري هنا" class="field w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-emerald-500">
+                </div>
+                <button type="submit" id="login-btn" class="btn reveal w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2" style="--i:3">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span>دخول لوحة التحكم</span>
+                </button>
+            </form>
+            <div id="login-error" class="text-xs text-center text-red-400 hidden" role="alert"></div>
+        </div>
+
+        <!-- لوحة التحكم الحقيقية -->
+        <div id="merchant-dashboard" class="hidden space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3 reveal" style="--i:0">
+                <div class="flex items-center gap-2.5">
+                    <div id="header-logo" class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 overflow-hidden flex items-center justify-center text-base">🏪</div>
+                    <div>
+                        <h1 class="text-base font-black text-emerald-400" id="display-shop-title">لوحة التحكم</h1>
+                        <p class="text-[11px] text-slate-400">المسح الضوئي وتسليم الهدايا</p>
+                    </div>
+                </div>
+                <button onclick="logoutMerchant()" class="btn px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs">
+                    خروج 🚪
+                </button>
+            </div>
+
+            <!-- كاميرا المسح الضوئي للـ QR Code -->
+            <div class="space-y-2 bg-slate-950/40 p-4 rounded-2xl border border-slate-800 reveal" style="--i:1">
+                <button onclick="startScanner()" class="btn w-full py-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs shadow-md flex items-center justify-center gap-2">
+                    <span>📷</span> تشغيل كاميرا مسح كود الزبون
+                </button>
+                <div id="reader" class="hidden overflow-hidden rounded-xl border border-slate-700 mt-2"></div>
+                <button id="stop-scanner-btn" onclick="stopScanner()" class="btn w-full py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs hidden mt-2">
+                    إيقاف الكاميرا ✕
+                </button>
+            </div>
+
+            <!-- إضافة نقطة وتتبع الهدية -->
+            <div class="space-y-3 bg-slate-950/40 p-4 rounded-2xl border border-slate-800 reveal" style="--i:2">
+                <label for="merchant-phone" class="block text-xs font-bold text-slate-200">➕ تتبع وزيادة النقاط للزبون</label>
+                <div class="flex gap-2">
+                    <input type="tel" id="merchant-phone" inputmode="tel" placeholder="رقم الهاتف أو كود الزبون" class="field flex-1 min-w-0 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+                    <button onclick="addPointToCustomer()" class="btn px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md whitespace-nowrap">
+                        إضافة نقطة
+                    </button>
+                </div>
+
+                <!-- زر تسليم الهدية وتصفير النقاط (يظهر تلقائياً عند 5 نقاط) -->
+                <div id="gift-action-container" class="hidden pt-2 border-t border-slate-800">
+                    <button onclick="deliverGiftAndReset()" class="btn gift-pulse w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-lg">
+                        🎁 تم تسليم الهدية وإعادة ضبط النقاط للصفر
+                    </button>
+                </div>
+
+                <div id="status-msg" class="text-xs text-center font-medium min-h-[22px] p-1.5 rounded-xl" aria-live="polite"></div>
+            </div>
+
+            <!-- إرسال إشعارات ترويجية -->
+            <div class="bg-slate-800/60 p-3.5 rounded-2xl border border-slate-800 space-y-2 reveal" style="--i:3">
+                <label for="promo-input" class="block text-xs font-bold text-amber-400">📢 إرسال إشعار ترويجي فوري للزبائن</label>
+                <input type="text" id="promo-input" placeholder="مثال: عرض خاص: قهوة ثانية مجانية!" class="field w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+                <div class="flex gap-2">
+                    <button onclick="sendPromoNotice()" class="btn flex-1 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs">
+                        إرسال الإشعار 🔔
+                    </button>
+                    <button onclick="clearPromoNotice()" class="btn px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold rounded-xl text-xs">
+                        مسح
+                    </button>
+                </div>
+                <div id="promo-msg" class="text-[11px] text-center min-h-[16px] text-amber-300" aria-live="polite"></div>
+            </div>
+
+            <!-- تثبيت التطبيق -->
+            <button id="install-btn" onclick="installApp()" class="btn reveal w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 font-semibold rounded-xl text-xs flex items-center justify-center gap-2" style="--i:4">
+                <span>📱</span> تثبيت لوحة البائع كالتطبيق في الهاتف
+            </button>
+        </div>
+
+    </div>
+
+    <!-- تعليمات التثبيت -->
+    <div id="install-sheet-backdrop" class="fixed inset-0 bg-slate-950/70 flex items-end sm:items-center justify-center p-4 z-50" onclick="closeInstallSheet(event)">
+        <div id="install-sheet" class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="install-title">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl overflow-hidden bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-lg" id="sheet-logo">🏪</div>
+                <div>
+                    <h3 id="install-title" class="text-sm font-black text-emerald-400">ثبّت لوحة البائع كتطبيق</h3>
+                    <p class="text-[11px] text-slate-400">ستظهر على شاشتك الرئيسية بشعار المطعم</p>
+                </div>
+            </div>
+            <ol id="install-steps" class="space-y-2 text-xs text-slate-200 leading-relaxed list-decimal pr-5"></ol>
+            <button class="btn w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold rounded-xl text-xs" onclick="closeInstallSheet()">فهمت</button>
+        </div>
+    </div>
+
+    <script>
+        /* ========= إعدادات المطعم (يجب أن تطابق ملف الزبون) ========= */
+        const SHOP = {
+            id: "cafe_best",
+            name: "مقهى النسخة الأفضل",
+            logo: "logo-mybusiness_fikra-automation.png"
+        };
+        /* ============================================================ */
+
+        /* ========= اتصال Supabase (مشروع بطاقة الولاء) ========= */
+        const SUPABASE_URL = "https://wjmcxewruhvtgffkfmlh.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqbWN4ZXdydWh2dGdmZmtmbWxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTg5MTgsImV4cCI6MjEwNjk3NDkxOH0.2u584JsGX96zEFOxv6s71BEonuuKIVh4xoCoQHgWxLQ";
+
+        // استدعاء دوال قاعدة البيانات (RPC) عبر REST بدون مكتبات إضافية
+        async function rpc(name, params) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                },
+                body: JSON.stringify(params || {})
+            });
+            if (!res.ok) throw new Error(`RPC ${name} failed: ${res.status}`);
+            const text = await res.text();
+            return text ? JSON.parse(text) : null;
+        }
+        /* ======================================================== */
+
+        const shopId = SHOP.id;
+        let pendingGiftQuery = '';
+        const maxPoints = 5;
+        let html5QrCode = null;
+        let deferredInstallPrompt = null;
+
+        let currentMerchant = JSON.parse(localStorage.getItem(`merchant_${shopId}`));
+
+        window.addEventListener('DOMContentLoaded', () => {
+            ['login-logo', 'header-logo', 'sheet-logo'].forEach(id => setLogo(document.getElementById(id)));
+            document.getElementById('login-shop-name').value = SHOP.name;
+            if (currentMerchant) {
+                showDashboard();
+            }
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js').catch(() => {});
+            }
+            setupInstall();
+        });
+
+        function setLogo(container) {
+            if (!container) return;
+            const img = new Image();
+            img.className = 'shop-logo';
+            img.alt = SHOP.name;
+            img.onload = () => { container.textContent = ''; container.appendChild(img); };
+            img.src = SHOP.logo;
+        }
+
+        function showStatus(el, classes, text) {
+            el.className = `text-xs text-center font-medium p-1.5 rounded-xl msg-in ${classes}`;
+            el.textContent = text;
+        }
+
+        async function handleMerchantLogin(e) {
+            e.preventDefault();
+            const shopName = document.getElementById('login-shop-name').value.trim();
+            const secretCode = document.getElementById('login-secret-code').value.trim();
+            const errorEl = document.getElementById('login-error');
+            const btn = document.getElementById('login-btn');
+
+            const showError = (text) => {
+                errorEl.textContent = text;
+                errorEl.classList.remove('hidden');
+                errorEl.classList.remove('msg-in');
+                void errorEl.offsetWidth;
+                errorEl.classList.add('msg-in');
+            };
+
+            btn.classList.add('is-loading');
+            try {
+                const ok = await rpc('verify_merchant', { p_shop_id: shopId, p_admin_code: secretCode });
+                if (ok !== true) {
+                    showError("❌ الرمز السري غير صحيح! تواصل مع المسؤول للحصول على الكود.");
+                    return;
+                }
+                errorEl.classList.add('hidden');
+                currentMerchant = { shopName, code: secretCode };
+                localStorage.setItem(`merchant_${shopId}`, JSON.stringify(currentMerchant));
+                showDashboard();
+            } catch (err) {
+                showError("⚠️ تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مرة أخرى.");
+            } finally {
+                btn.classList.remove('is-loading');
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('merchant-login-section').classList.add('hidden');
+            const dash = document.getElementById('merchant-dashboard');
+            dash.classList.remove('hidden');
+            dash.querySelectorAll('.reveal').forEach(el => {
+                el.style.animation = 'none';
+                void el.offsetWidth;
+                el.style.animation = '';
+            });
+            document.getElementById('display-shop-title').textContent = currentMerchant.shopName;
+            refreshInstallButton();
+        }
+
+        function logoutMerchant() {
+            stopScanner();
+            pendingGiftQuery = '';
+            localStorage.removeItem(`merchant_${shopId}`);
+            document.getElementById('merchant-dashboard').classList.add('hidden');
+            document.getElementById('merchant-login-section').classList.remove('hidden');
+            document.getElementById('login-secret-code').value = '';
+            document.getElementById('gift-action-container').classList.add('hidden');
+        }
+
+        function startScanner() {
+            const readerDiv = document.getElementById('reader');
+            const stopBtn = document.getElementById('stop-scanner-btn');
+            readerDiv.classList.remove('hidden');
+            stopBtn.classList.remove('hidden');
+
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 220, height: 220 } },
+                (decodedText) => {
+                    let phoneClean = decodedText;
+                    if (decodedText.startsWith('phone:')) {
+                        phoneClean = decodedText.replace('phone:', '');
+                    }
+                    document.getElementById('merchant-phone').value = phoneClean;
+                    stopScanner();
+                    addPointToCustomer();
+                },
+                (errorMessage) => {}
+            ).catch((err) => {
+                alert("تعذر تشغيل الكاميرا. تأكد من إعطاء الصلاحية للمتصفح.");
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            const hideUI = () => {
+                document.getElementById('reader').classList.add('hidden');
+                document.getElementById('stop-scanner-btn').classList.add('hidden');
+            };
+            if (html5QrCode) {
+                html5QrCode.stop().then(hideUI).catch(hideUI);
+            } else {
+                hideUI();
+            }
+        }
+
+        const NET_ERR = "⚠️ تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مرة أخرى.";
+        const RED = "bg-red-500/10 text-red-400 border border-red-500/20";
+
+        function sessionExpired() {
+            logoutMerchant();
+            const errorEl = document.getElementById('login-error');
+            errorEl.textContent = "❌ الرمز السري تغيّر أو انتهت الجلسة، سجّل الدخول من جديد.";
+            errorEl.classList.remove('hidden');
+        }
+
+        async function addPointToCustomer() {
+            const inputVal = document.getElementById('merchant-phone').value.trim();
+            const msgEl = document.getElementById('status-msg');
+            const giftContainer = document.getElementById('gift-action-container');
+
+            if(!inputVal) {
+                showStatus(msgEl, RED, 'المرجو مسح كود الزبون أو إدخال رقمه!');
+                giftContainer.classList.add('hidden');
+                return;
+            }
+
+            let res;
+            try {
+                res = await rpc('add_point', { p_shop_id: shopId, p_admin_code: currentMerchant.code, p_query: inputVal });
+            } catch (err) {
+                showStatus(msgEl, RED, NET_ERR);
+                return;
+            }
+
+            if (!res || res.status === 'unauthorized') { sessionExpired(); return; }
+
+            if (res.status === 'not_found') {
+                showStatus(msgEl, RED, 'الزبون غير مسجل في النظام بهذا الرقم!');
+                giftContainer.classList.add('hidden');
+                return;
+            }
+
+            const points = res.points;
+            if (res.status === 'ok') {
+                giftContainer.classList.add('hidden');
+                let text = `✅ تمت إضافة نقطة بنجاح (${res.name})! المجموع: ${points}/${maxPoints}`;
+                if(points >= maxPoints) {
+                    pendingGiftQuery = inputVal;
+                    giftContainer.classList.remove('hidden');
+                    text += " 🎉 (استوفى جميع النقاط ومؤهل للهدية!)";
+                }
+                showStatus(msgEl, "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20", text);
+            } else {
+                // status === 'full'
+                pendingGiftQuery = inputVal;
+                giftContainer.classList.remove('hidden');
+                showStatus(msgEl, "bg-amber-500/10 text-amber-400 border border-amber-500/20", `⚠️ الزبون (${res.name}) لديه 5 نقاط كاملة وفي انتظار تسليم الهدية!`);
+            }
+        }
+
+        async function deliverGiftAndReset() {
+            const msgEl = document.getElementById('status-msg');
+            const giftContainer = document.getElementById('gift-action-container');
+            const query = pendingGiftQuery || document.getElementById('merchant-phone').value.trim();
+
+            let res;
+            try {
+                res = await rpc('deliver_gift', { p_shop_id: shopId, p_admin_code: currentMerchant.code, p_query: query });
+            } catch (err) {
+                showStatus(msgEl, RED, NET_ERR);
+                return;
+            }
+
+            if (!res || res.status === 'unauthorized') { sessionExpired(); return; }
+            if (res.status !== 'ok') {
+                giftContainer.classList.add('hidden');
+                showStatus(msgEl, RED, 'تعذر تسليم الهدية: الزبون غير موجود أو لم يكمل النقاط بعد.');
+                return;
+            }
+
+            pendingGiftQuery = '';
+            giftContainer.classList.add('hidden');
+            document.getElementById('merchant-phone').value = '';
+            showStatus(msgEl, "bg-sky-500/10 text-sky-400 border border-sky-500/20", "✨ تم تسليم الهدية بنجاح، وتم تصفير النقاط للزبون لبدء دورة جديدة!");
+        }
+
+        async function sendPromoNotice() {
+            const text = document.getElementById('promo-input').value.trim();
+            if(!text) return;
+            try {
+                const res = await rpc('set_promo', { p_shop_id: shopId, p_admin_code: currentMerchant.code, p_text: text });
+                if (!res || res.status === 'unauthorized') { sessionExpired(); return; }
+                flashPromoMsg("تم إرسال الإشعار بنجاح إلى بطاقات الزبائن ✓");
+            } catch (err) {
+                flashPromoMsg(NET_ERR);
+            }
+        }
+
+        async function clearPromoNotice() {
+            try {
+                const res = await rpc('set_promo', { p_shop_id: shopId, p_admin_code: currentMerchant.code, p_text: '' });
+                if (!res || res.status === 'unauthorized') { sessionExpired(); return; }
+                document.getElementById('promo-input').value = '';
+                flashPromoMsg("تم مسح الإشعار.");
+            } catch (err) {
+                flashPromoMsg(NET_ERR);
+            }
+        }
+
+        function flashPromoMsg(text) {
+            const el = document.getElementById('promo-msg');
+            el.textContent = text;
+            el.classList.remove('msg-in');
+            void el.offsetWidth;
+            el.classList.add('msg-in');
+            clearTimeout(flashPromoMsg._t);
+            flashPromoMsg._t = setTimeout(() => { el.textContent = ''; }, 3000);
+        }
+
+        /* ---------- تثبيت التطبيق ---------- */
+        function isStandalone() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+
+        function isIOS() {
+            return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+
+        function setupInstall() {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredInstallPrompt = e;
+                refreshInstallButton();
+            });
+            window.addEventListener('appinstalled', () => {
+                deferredInstallPrompt = null;
+                refreshInstallButton();
+            });
+        }
+
+        function refreshInstallButton() {
+            const btn = document.getElementById('install-btn');
+            if (btn) btn.classList.toggle('hidden', isStandalone());
+        }
+
+        async function installApp() {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                try { await deferredInstallPrompt.userChoice; } catch (e) {}
+                deferredInstallPrompt = null;
+                refreshInstallButton();
+                return;
+            }
+            const items = isIOS()
+                ? [
+                    'افتح هذه الصفحة في متصفح <strong>Safari</strong>.',
+                    'اضغط على زر المشاركة <strong>(مربع بسهم لأعلى)</strong> أسفل الشاشة.',
+                    'اختر <strong>«إضافة إلى الشاشة الرئيسية»</strong> ثم اضغط <strong>إضافة</strong>.'
+                  ]
+                : [
+                    'اضغط على قائمة المتصفح <strong>(⋮ النقاط الثلاث)</strong>.',
+                    'اختر <strong>«تثبيت التطبيق»</strong> أو <strong>«إضافة إلى الشاشة الرئيسية»</strong>.',
+                    'أكّد بالضغط على <strong>تثبيت</strong>.'
+                  ];
+            document.getElementById('install-steps').innerHTML = items.map(t => `<li>${t}</li>`).join('');
+            document.getElementById('install-sheet-backdrop').classList.add('is-open');
+        }
+
+        function closeInstallSheet(e) {
+            if (e && e.target !== document.getElementById('install-sheet-backdrop')) return;
+            document.getElementById('install-sheet-backdrop').classList.remove('is-open');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') document.getElementById('install-sheet-backdrop').classList.remove('is-open');
+        });
+    </script>
+</body>
+</html>
